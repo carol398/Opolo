@@ -22,6 +22,11 @@ interface FollowUpData {
   checkIn: string;
 }
 
+interface QueuedImage {
+  base64: string;
+  mediaType: string;
+}
+
 type AppState = "upload" | "loading" | "breakdown" | "followup-loading";
 
 export default function Home() {
@@ -32,49 +37,94 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const processImage = useCallback(async (file: File) => {
-    setError(null);
+  // Multi-page support
+  const [pageQueue, setPageQueue] = useState<QueuedImage[]>([]);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+
+  const fileToBase64 = (file: File): Promise<QueuedImage> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve({
+          base64: result.split(",")[1],
+          mediaType: file.type || "image/jpeg",
+        });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const analyzeImage = useCallback(async (image: QueuedImage) => {
+    const response = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image: image.base64,
+        mediaType: image.mediaType,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || "Something went wrong");
+    }
+
+    return (await response.json()) as BreakdownData;
+  }, []);
+
+  const processFiles = useCallback(
+    async (files: File[]) => {
+      setError(null);
+      setState("loading");
+
+      try {
+        // Convert all files to base64 and queue them
+        const images = await Promise.all(files.map(fileToBase64));
+        setPageQueue(images);
+        setTotalPages(images.length);
+        setCurrentPageIndex(0);
+
+        // Analyze only the first page
+        const data = await analyzeImage(images[0]);
+        setBreakdown(data);
+        setFollowUps([]);
+        setState("breakdown");
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Something went wrong. Try sending the photos again."
+        );
+        setState("upload");
+      }
+    },
+    [analyzeImage]
+  );
+
+  const handleNextPage = useCallback(async () => {
+    const nextIndex = currentPageIndex + 1;
+    if (nextIndex >= pageQueue.length) return;
+
     setState("loading");
+    setFollowUps([]);
 
     try {
-      const reader = new FileReader();
-      const base64 = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => {
-          const result = reader.result as string;
-          const base64Data = result.split(",")[1];
-          resolve(base64Data);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const response = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image: base64,
-          mediaType: file.type || "image/jpeg",
-        }),
-      });
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || "Something went wrong");
-      }
-
-      const data: BreakdownData = await response.json();
+      const data = await analyzeImage(pageQueue[nextIndex]);
+      setCurrentPageIndex(nextIndex);
       setBreakdown(data);
-      setFollowUps([]);
       setState("breakdown");
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : "Something went wrong. Try sending the photo again."
+          : "Something went wrong loading the next page. Try again."
       );
-      setState("upload");
+      setState("breakdown");
     }
-  }, []);
+  }, [currentPageIndex, pageQueue, analyzeImage]);
 
   const handleFollowUp = useCallback(
     async (message: string) => {
@@ -112,16 +162,20 @@ export default function Home() {
   );
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) processImage(file);
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      processFiles(Array.from(files));
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith("image/")) {
-      processImage(file);
+    const files = Array.from(e.dataTransfer.files).filter((f) =>
+      f.type.startsWith("image/")
+    );
+    if (files.length > 0) {
+      processFiles(files);
     }
   };
 
@@ -130,8 +184,13 @@ export default function Home() {
     setBreakdown(null);
     setFollowUps([]);
     setError(null);
+    setPageQueue([]);
+    setCurrentPageIndex(0);
+    setTotalPages(0);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
+
+  const hasMorePages = currentPageIndex < totalPages - 1;
 
   // Upload screen
   if (state === "upload") {
@@ -155,7 +214,9 @@ export default function Home() {
               Hey! Take a photo of your homework and drop it here.
               <br />
               <span className="text-text-light">
-                I will break it down so it makes sense.
+                Got multiple pages? No problem — drop them all in.
+                <br />
+                We will go through them one at a time.
               </span>
             </p>
           </div>
@@ -179,7 +240,7 @@ export default function Home() {
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
+              multiple
               className="hidden"
               onChange={handleFileSelect}
             />
@@ -187,9 +248,9 @@ export default function Home() {
             <div className="space-y-4">
               <div className="text-5xl">📸</div>
               <p className="text-lg font-semibold text-text">
-                Drop your photo here
+                Drop your photos here
               </p>
-              <p className="text-text-light">or click to pick one</p>
+              <p className="text-text-light">or click to pick them — one or more pages</p>
             </div>
           </div>
 
@@ -219,11 +280,16 @@ export default function Home() {
     return (
       <main className="min-h-screen px-4 py-8 md:px-8">
         <div className="max-w-2xl mx-auto space-y-6">
-          {/* Header with new assignment button */}
+          {/* Header with page indicator and new assignment button */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <span className="text-3xl">🌱</span>
               <span className="text-xl font-bold text-text">Opolo</span>
+              {totalPages > 1 && (
+                <span className="text-sm font-semibold text-text-light bg-peach/40 px-3 py-1 rounded-full">
+                  Page {currentPageIndex + 1} of {totalPages}
+                </span>
+              )}
             </div>
             <button
               onClick={handleNewAssignment}
@@ -253,6 +319,30 @@ export default function Home() {
           {/* Follow-up input */}
           {state === "breakdown" && (
             <FollowUpInput onSend={handleFollowUp} />
+          )}
+
+          {/* Next page button — only when there are more pages */}
+          {state === "breakdown" && hasMorePages && (
+            <section className="bg-sky-light rounded-2xl p-6 border border-sky/30 shadow-sm text-center space-y-3">
+              <p className="text-lg text-text">
+                Ready for the next page? No rush — only when you are.
+              </p>
+              <button
+                onClick={handleNextPage}
+                className="px-8 py-3 bg-sky text-white font-bold rounded-xl hover:bg-sky/80 transition-all text-lg"
+              >
+                Show me page {currentPageIndex + 2} →
+              </button>
+            </section>
+          )}
+
+          {/* All done indicator */}
+          {state === "breakdown" && totalPages > 1 && !hasMorePages && (
+            <section className="bg-mint-light rounded-2xl p-5 border border-mint/30 shadow-sm text-center">
+              <p className="text-lg text-text font-semibold">
+                That is all the pages. Nice work getting through them all! ✨
+              </p>
+            </section>
           )}
         </div>
       </main>
