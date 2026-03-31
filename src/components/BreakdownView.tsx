@@ -2,6 +2,8 @@ interface BreakdownData {
   warmOpener: string;
   whatThisIsAsking: string;
   visualBreakdown: string;
+  explanation: string;
+  answerChoices: { letter: string; text: string }[];
   steps: string[];
   wordsToKnow: { word: string; meaning: string }[];
   startHere: string;
@@ -35,6 +37,42 @@ export function BreakdownView({ data }: { data: BreakdownData }) {
           {data.visualBreakdown}
         </pre>
       </section>
+
+      {/* Explanation — 5th grade level */}
+      {data.explanation && (
+        <section className="bg-warm-white rounded-2xl p-6 border border-border shadow-sm">
+          <h2 className="text-sm font-bold text-text-light uppercase tracking-wide mb-4">
+            💡 Why this works
+          </h2>
+          <p className="text-lg text-text leading-loose whitespace-pre-line">
+            {data.explanation}
+          </p>
+        </section>
+      )}
+
+      {/* Answer choices — only if the homework has them */}
+      {data.answerChoices && data.answerChoices.length > 0 && (
+        <section className="bg-sky-light rounded-2xl p-6 border border-sky/30 shadow-sm">
+          <h2 className="text-sm font-bold text-sky uppercase tracking-wide mb-4">
+            🔤 Your answer choices
+          </h2>
+          <div className="space-y-3">
+            {data.answerChoices.map((choice, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-4 bg-white/60 rounded-xl p-4"
+              >
+                <span className="flex-shrink-0 w-9 h-9 rounded-full bg-sky flex items-center justify-center text-white font-bold text-lg">
+                  {choice.letter}
+                </span>
+                <span className="text-lg text-text pt-1 leading-relaxed">
+                  {choice.text}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Steps */}
       <section className="bg-mint-light rounded-2xl p-6 border border-mint/30 shadow-sm">

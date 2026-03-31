@@ -9,6 +9,8 @@ interface BreakdownData {
   warmOpener: string;
   whatThisIsAsking: string;
   visualBreakdown: string;
+  explanation: string;
+  answerChoices: { letter: string; text: string }[];
   steps: string[];
   wordsToKnow: { word: string; meaning: string }[];
   startHere: string;
