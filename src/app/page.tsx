@@ -37,6 +37,11 @@ interface QueuedImage {
   mediaType: string;
 }
 
+// Cache key for page+problem combos
+function cacheKey(pageIndex: number, problem: number) {
+  return `${pageIndex}-${problem}`;
+}
+
 type AppState = "upload" | "loading" | "breakdown" | "followup-loading";
 
 export default function Home() {
@@ -52,8 +57,12 @@ export default function Home() {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
-  // Multi-problem support (problems within same page)
+  // Multi-problem support
   const [currentProblem, setCurrentProblem] = useState(1);
+  const [highestProblem, setHighestProblem] = useState(1); // tracks how far we've discovered
+
+  // Cache: stores breakdowns so going back is instant
+  const breakdownCache = useRef<Map<string, BreakdownData>>(new Map());
 
   const fileToBase64 = (file: File): Promise<QueuedImage> => {
     return new Promise((resolve, reject) => {
@@ -92,21 +101,64 @@ export default function Home() {
     []
   );
 
+  const goToProblem = useCallback(
+    async (pageIdx: number, problemNum: number) => {
+      const key = cacheKey(pageIdx, problemNum);
+
+      // Check cache first — instant jump
+      const cached = breakdownCache.current.get(key);
+      if (cached) {
+        setCurrentPageIndex(pageIdx);
+        setCurrentProblem(problemNum);
+        setBreakdown(cached);
+        setFollowUps([]);
+        setError(null);
+        setState("breakdown");
+        return;
+      }
+
+      // Not cached — fetch it
+      const image = pageQueue[pageIdx];
+      if (!image) return;
+
+      setState("loading");
+      setFollowUps([]);
+      setError(null);
+
+      try {
+        const data = await analyzeImage(image, problemNum);
+        breakdownCache.current.set(key, data);
+        setCurrentPageIndex(pageIdx);
+        setCurrentProblem(problemNum);
+        setBreakdown(data);
+        if (problemNum > highestProblem) {
+          setHighestProblem(problemNum);
+        }
+        setState("breakdown");
+      } catch {
+        setError("Couldn't load that problem. It might not exist on this page.");
+        setState("breakdown");
+      }
+    },
+    [pageQueue, analyzeImage, highestProblem]
+  );
+
   const processFiles = useCallback(
     async (files: File[]) => {
       setError(null);
       setState("loading");
+      breakdownCache.current.clear();
 
       try {
-        // Convert all files to base64 and queue them
         const images = await Promise.all(files.map(fileToBase64));
         setPageQueue(images);
         setTotalPages(images.length);
         setCurrentPageIndex(0);
         setCurrentProblem(1);
+        setHighestProblem(1);
 
-        // Analyze only the first page
         const data = await analyzeImage(images[0]);
+        breakdownCache.current.set(cacheKey(0, 1), data);
         setBreakdown(data);
         setFollowUps([]);
         setState("breakdown");
@@ -122,47 +174,43 @@ export default function Home() {
     [analyzeImage]
   );
 
-  const handleNextPage = useCallback(async () => {
-    const nextIndex = currentPageIndex + 1;
-    if (nextIndex >= pageQueue.length) return;
-
-    setState("loading");
-    setFollowUps([]);
-
-    try {
-      const data = await analyzeImage(pageQueue[nextIndex], 1);
-      setCurrentPageIndex(nextIndex);
-      setCurrentProblem(1);
-      setBreakdown(data);
-      setState("breakdown");
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Something went wrong loading the next page. Try again."
-      );
-      setState("breakdown");
+  const handleDiscoverNext = useCallback(async () => {
+    // Try next problem on current page first
+    const nextProblem = highestProblem + 1;
+    const image = pageQueue[currentPageIndex];
+    if (!image) {
+      // Try next page
+      if (currentPageIndex + 1 < pageQueue.length) {
+        goToProblem(currentPageIndex + 1, 1);
+      }
+      return;
     }
-  }, [currentPageIndex, pageQueue, analyzeImage]);
-
-  const handleNextProblem = useCallback(async () => {
-    const nextProblem = currentProblem + 1;
-    const currentImage = pageQueue[currentPageIndex];
-    if (!currentImage) return;
 
     setState("loading");
     setFollowUps([]);
 
     try {
-      const data = await analyzeImage(currentImage, nextProblem);
+      const data = await analyzeImage(image, nextProblem);
+      const key = cacheKey(currentPageIndex, nextProblem);
+      breakdownCache.current.set(key, data);
       setCurrentProblem(nextProblem);
+      setHighestProblem(nextProblem);
       setBreakdown(data);
       setState("breakdown");
     } catch {
-      setError("No more problems found on this page.");
-      setState("breakdown");
+      // No more problems on this page — try next page
+      if (currentPageIndex + 1 < pageQueue.length) {
+        setCurrentPageIndex(currentPageIndex + 1);
+        setCurrentProblem(1);
+        setHighestProblem(1);
+        breakdownCache.current.clear();
+        goToProblem(currentPageIndex + 1, 1);
+      } else {
+        setError(null);
+        setState("breakdown");
+      }
     }
-  }, [currentProblem, currentPageIndex, pageQueue, analyzeImage]);
+  }, [highestProblem, currentPageIndex, pageQueue, analyzeImage, goToProblem]);
 
   const handleFollowUp = useCallback(
     async (message: string) => {
@@ -226,17 +274,16 @@ export default function Home() {
     setCurrentPageIndex(0);
     setTotalPages(0);
     setCurrentProblem(1);
+    setHighestProblem(1);
+    breakdownCache.current.clear();
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
-
-  const hasMorePages = currentPageIndex < totalPages - 1;
 
   // Upload screen
   if (state === "upload") {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
         <div className="max-w-lg w-full text-center space-y-8">
-          {/* Logo & welcome */}
           <div className="space-y-3">
             <div className="text-6xl mb-2">🌱</div>
             <h1 className="text-4xl font-extrabold text-text tracking-tight">
@@ -247,20 +294,16 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Warm greeting */}
           <div className="bg-warm-white rounded-2xl p-6 border border-border shadow-sm">
             <p className="text-lg text-text leading-relaxed">
               Hey! Take a photo of your homework and drop it here.
               <br />
               <span className="text-text-light">
-                Got multiple pages? No problem — drop them all in.
-                <br />
-                We will go through them one at a time.
+                Got multiple pages? Drop them all in.
               </span>
             </p>
           </div>
 
-          {/* Upload area */}
           <div
             className={`relative border-3 border-dashed rounded-2xl p-12 transition-all cursor-pointer ${
               isDragging
@@ -283,26 +326,23 @@ export default function Home() {
               className="hidden"
               onChange={handleFileSelect}
             />
-
             <div className="space-y-4">
               <div className="text-5xl">📸</div>
               <p className="text-lg font-semibold text-text">
                 Drop your photos here
               </p>
-              <p className="text-text-light">or click to pick them — one or more pages</p>
+              <p className="text-text-light">or click to pick them</p>
             </div>
           </div>
 
-          {/* Error message */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700">
               {error}
             </div>
           )}
 
-          {/* Reassurance */}
           <p className="text-sm text-text-light">
-            No rush. Take your time. We will figure it out together. ✨
+            No rush. We will figure it out together. ✨
           </p>
         </div>
       </main>
@@ -314,29 +354,31 @@ export default function Home() {
     return <LoadingView />;
   }
 
-  // Breakdown + follow-up screen
+  // Breakdown screen
   if (breakdown) {
     return (
-      <main className="min-h-screen px-4 py-8 md:px-8">
-        <div className="max-w-2xl mx-auto space-y-6">
-          {/* Header with page indicator and new assignment button */}
+      <main className="min-h-screen px-4 pt-4 pb-24 md:px-8">
+        <div className="max-w-2xl mx-auto space-y-5">
+          {/* Header */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">🌱</span>
-              <span className="text-xl font-bold text-text">Opolo</span>
-              <span className="text-sm font-semibold text-text-light bg-peach/40 px-3 py-1 rounded-full">
-                {totalPages > 1
-                  ? `Page ${currentPageIndex + 1} · Problem ${currentProblem}`
-                  : `Problem ${currentProblem}`}
-              </span>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🌱</span>
+              <span className="text-lg font-bold text-text">Opolo</span>
             </div>
             <button
               onClick={handleNewAssignment}
-              className="text-sm font-semibold text-soft-orange hover:text-text transition-colors px-4 py-2 rounded-xl hover:bg-peach/20"
+              className="text-sm font-semibold text-soft-orange hover:text-text transition-colors px-3 py-1.5 rounded-xl hover:bg-peach/20"
             >
               New assignment →
             </button>
           </div>
+
+          {/* Error */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">
+              {error}
+            </div>
+          )}
 
           {/* The breakdown */}
           <BreakdownView data={breakdown} />
@@ -348,9 +390,9 @@ export default function Home() {
 
           {/* Follow-up loading */}
           {state === "followup-loading" && (
-            <div className="bg-warm-white rounded-2xl p-6 border border-border shadow-sm text-center">
-              <div className="animate-pulse text-lg text-text-light">
-                Let me think about that for a sec...
+            <div className="bg-warm-white rounded-2xl p-5 border border-border shadow-sm text-center">
+              <div className="animate-pulse text-base text-text-light">
+                Let me think about that...
               </div>
             </div>
           )}
@@ -359,35 +401,87 @@ export default function Home() {
           {state === "breakdown" && (
             <FollowUpInput onSend={handleFollowUp} />
           )}
-
-          {/* Next problem / next page buttons */}
-          {state === "breakdown" && (
-            <div className="flex flex-col gap-3">
-              {/* Next problem on same page */}
-              <button
-                onClick={handleNextProblem}
-                className="w-full px-6 py-4 bg-mint text-white font-bold rounded-2xl hover:bg-mint/80 transition-all text-base"
-              >
-                Next problem →
-              </button>
-
-              {/* Next page — only when there are more pages */}
-              {hasMorePages && (
-                <button
-                  onClick={handleNextPage}
-                  className="w-full px-6 py-3 bg-sky text-white font-semibold rounded-2xl hover:bg-sky/80 transition-all text-base"
-                >
-                  Next page →
-                </button>
-              )}
-            </div>
-          )}
         </div>
+
+        {/* Sticky bottom navigation */}
+        <ProblemNav
+          currentProblem={currentProblem}
+          highestProblem={highestProblem}
+          currentPageIndex={currentPageIndex}
+          totalPages={totalPages}
+          onGoToProblem={(num) => goToProblem(currentPageIndex, num)}
+          onDiscoverNext={handleDiscoverNext}
+          isLoading={state === "followup-loading"}
+        />
       </main>
     );
   }
 
   return null;
+}
+
+function ProblemNav({
+  currentProblem,
+  highestProblem,
+  currentPageIndex,
+  totalPages,
+  onGoToProblem,
+  onDiscoverNext,
+  isLoading,
+}: {
+  currentProblem: number;
+  highestProblem: number;
+  currentPageIndex: number;
+  totalPages: number;
+  onGoToProblem: (num: number) => void;
+  onDiscoverNext: () => void;
+  isLoading: boolean;
+}) {
+  return (
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-border shadow-lg z-50">
+      <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+        {/* Page indicator */}
+        <div className="text-xs text-text-light font-semibold min-w-fit">
+          {totalPages > 1 ? `Page ${currentPageIndex + 1}/${totalPages}` : ""}
+        </div>
+
+        {/* Problem dots */}
+        <div className="flex items-center gap-2 overflow-x-auto px-2">
+          {Array.from({ length: highestProblem }, (_, i) => i + 1).map(
+            (num) => (
+              <button
+                key={num}
+                onClick={() => onGoToProblem(num)}
+                disabled={isLoading}
+                className={`flex-shrink-0 w-10 h-10 rounded-full font-bold text-base transition-all ${
+                  num === currentProblem
+                    ? "bg-soft-orange text-white scale-110 shadow-md"
+                    : "bg-peach/40 text-text hover:bg-peach/70"
+                } disabled:opacity-50`}
+              >
+                {num}
+              </button>
+            )
+          )}
+
+          {/* Discover next button */}
+          <button
+            onClick={onDiscoverNext}
+            disabled={isLoading}
+            className="flex-shrink-0 w-10 h-10 rounded-full bg-mint text-white font-bold text-xl hover:bg-mint/80 transition-all disabled:opacity-50"
+            title="Next problem"
+          >
+            +
+          </button>
+        </div>
+
+        {/* Spacer for balance */}
+        <div className="min-w-fit text-xs text-text-light">
+          #{currentProblem}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function FollowUpInput({ onSend }: { onSend: (msg: string) => void }) {
@@ -402,13 +496,13 @@ function FollowUpInput({ onSend }: { onSend: (msg: string) => void }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <form onSubmit={handleSubmit}>
       <div className="bg-warm-white rounded-2xl border border-border shadow-sm overflow-hidden">
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder="Which part still feels confusing? Tell me and I will help..."
-          className="w-full p-5 text-lg bg-transparent resize-none focus:outline-none placeholder:text-text-light/50"
+          placeholder="Confused about something? Tell me which part..."
+          className="w-full p-4 text-base bg-transparent resize-none focus:outline-none placeholder:text-text-light/50"
           rows={2}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -417,11 +511,11 @@ function FollowUpInput({ onSend }: { onSend: (msg: string) => void }) {
             }
           }}
         />
-        <div className="px-5 pb-4 flex justify-end">
+        <div className="px-4 pb-3 flex justify-end">
           <button
             type="submit"
             disabled={!message.trim()}
-            className="px-6 py-2.5 bg-soft-orange text-white font-semibold rounded-xl hover:bg-soft-orange/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-base"
+            className="px-5 py-2 bg-soft-orange text-white font-semibold rounded-xl hover:bg-soft-orange/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-sm"
           >
             Ask
           </button>
