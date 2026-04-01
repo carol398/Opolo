@@ -9,19 +9,24 @@ interface BreakdownData {
   warmOpener: string;
   whatThisIsAsking: string;
   visualBreakdown: string;
-  explanation: string;
-  guidingQuestion: string;
-  answerChoices: { letter: string; text: string }[];
+  workedExample?: string;
+  explanation?: string;
+  answerChoices: {
+    letter: string;
+    text: string;
+    demo?: string;
+    isCorrect?: boolean;
+  }[];
   steps: string[];
-  wordsToKnow: { word: string; meaning: string }[];
-  startHere: string;
+  wordsToKnow: { word: string; meaning: string; visual?: string }[];
   checkIn: string;
 }
 
 interface FollowUpData {
   validation: string;
+  workedExample?: string;
   guidingQuestion?: string;
-  newExplanation: string;
+  newExplanation?: string;
   tryThis: string;
   checkIn: string;
 }
