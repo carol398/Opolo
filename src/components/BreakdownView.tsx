@@ -28,14 +28,12 @@ export function BreakdownView({ data }: { data: BreakdownData }) {
         </p>
       </section>
 
-      {/* Visual breakdown — THE MOST IMPORTANT PART */}
+      {/* Visual breakdown — Story Flow format */}
       <section className="bg-lavender-light rounded-2xl p-6 border border-lavender/30 shadow-sm">
         <h2 className="text-sm font-bold text-lavender uppercase tracking-wide mb-4">
           👀 Here is what it looks like
         </h2>
-        <pre className="text-lg font-mono leading-loose text-text whitespace-pre-wrap bg-white/60 rounded-xl p-5 overflow-x-auto">
-          {data.visualBreakdown}
-        </pre>
+        <StoryFlow text={data.visualBreakdown} />
       </section>
 
       {/* Explanation — 5th grade level */}
@@ -131,6 +129,55 @@ export function BreakdownView({ data }: { data: BreakdownData }) {
         </h2>
         <p className="text-lg text-text leading-relaxed">{data.checkIn}</p>
       </section>
+    </div>
+  );
+}
+
+function StoryFlow({ text }: { text: string }) {
+  // Split on arrow separators (↓) to get individual blocks
+  const blocks = text
+    .split(/\n\s*↓\s*\n/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+
+  if (blocks.length <= 1) {
+    // Fallback: if no arrow separators found, render as styled text
+    return (
+      <div className="bg-white/60 rounded-xl p-5">
+        <p className="text-lg text-text leading-loose whitespace-pre-line">
+          {text}
+        </p>
+      </div>
+    );
+  }
+
+  // Color cycle for the cards
+  const cardStyles = [
+    "bg-sky-light border-sky/30",
+    "bg-peach/30 border-soft-orange/20",
+    "bg-mint-light border-mint/30",
+    "bg-lavender-light border-lavender/40",
+  ];
+
+  return (
+    <div className="space-y-3">
+      {blocks.map((block, i) => (
+        <div key={i}>
+          <div
+            className={`rounded-xl p-5 border ${cardStyles[i % cardStyles.length]}`}
+          >
+            <p className="text-lg text-text leading-relaxed whitespace-pre-line">
+              {block}
+            </p>
+          </div>
+          {/* Arrow between blocks */}
+          {i < blocks.length - 1 && (
+            <div className="flex justify-center py-1">
+              <span className="text-2xl text-lavender">↓</span>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
