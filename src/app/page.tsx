@@ -7,27 +7,28 @@ import { LoadingView } from "@/components/LoadingView";
 
 interface BreakdownData {
   warmOpener: string;
-  whatThisIsAsking: string;
-  visualBreakdown: string;
+  questionAndChoices?: {
+    question: string;
+    context: string;
+    choices: { letter: string; text: string; demo?: string }[];
+  };
+  whatThisIsAsking?: string;
+  visualBreakdown?: string;
   workedExample?: string;
   explanation?: string;
-  answerChoices: {
-    letter: string;
-    text: string;
-    demo?: string;
-    isCorrect?: boolean;
-  }[];
-  steps: string[];
-  wordsToKnow: { word: string; meaning: string; visual?: string }[];
+  answerChoices?: { letter: string; text: string; demo?: string }[];
+  steps?: string[];
+  wordsToKnow?: { word: string; meaning: string; visual?: string }[];
   checkIn: string;
 }
 
 interface FollowUpData {
   validation: string;
   workedExample?: string;
+  coachingQuestion?: string;
   guidingQuestion?: string;
   newExplanation?: string;
-  tryThis: string;
+  tryThis?: string;
   checkIn: string;
 }
 
@@ -51,6 +52,9 @@ export default function Home() {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
+  // Multi-problem support (problems within same page)
+  const [currentProblem, setCurrentProblem] = useState(1);
+
   const fileToBase64 = (file: File): Promise<QueuedImage> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -66,23 +70,27 @@ export default function Home() {
     });
   };
 
-  const analyzeImage = useCallback(async (image: QueuedImage) => {
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image: image.base64,
-        mediaType: image.mediaType,
-      }),
-    });
+  const analyzeImage = useCallback(
+    async (image: QueuedImage, problemNumber: number = 1) => {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image: image.base64,
+          mediaType: image.mediaType,
+          problemNumber,
+        }),
+      });
 
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || "Something went wrong");
-    }
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Something went wrong");
+      }
 
-    return (await response.json()) as BreakdownData;
-  }, []);
+      return (await response.json()) as BreakdownData;
+    },
+    []
+  );
 
   const processFiles = useCallback(
     async (files: File[]) => {
@@ -95,6 +103,7 @@ export default function Home() {
         setPageQueue(images);
         setTotalPages(images.length);
         setCurrentPageIndex(0);
+        setCurrentProblem(1);
 
         // Analyze only the first page
         const data = await analyzeImage(images[0]);
@@ -121,8 +130,9 @@ export default function Home() {
     setFollowUps([]);
 
     try {
-      const data = await analyzeImage(pageQueue[nextIndex]);
+      const data = await analyzeImage(pageQueue[nextIndex], 1);
       setCurrentPageIndex(nextIndex);
+      setCurrentProblem(1);
       setBreakdown(data);
       setState("breakdown");
     } catch (err) {
@@ -134,6 +144,25 @@ export default function Home() {
       setState("breakdown");
     }
   }, [currentPageIndex, pageQueue, analyzeImage]);
+
+  const handleNextProblem = useCallback(async () => {
+    const nextProblem = currentProblem + 1;
+    const currentImage = pageQueue[currentPageIndex];
+    if (!currentImage) return;
+
+    setState("loading");
+    setFollowUps([]);
+
+    try {
+      const data = await analyzeImage(currentImage, nextProblem);
+      setCurrentProblem(nextProblem);
+      setBreakdown(data);
+      setState("breakdown");
+    } catch {
+      setError("No more problems found on this page.");
+      setState("breakdown");
+    }
+  }, [currentProblem, currentPageIndex, pageQueue, analyzeImage]);
 
   const handleFollowUp = useCallback(
     async (message: string) => {
@@ -196,6 +225,7 @@ export default function Home() {
     setPageQueue([]);
     setCurrentPageIndex(0);
     setTotalPages(0);
+    setCurrentProblem(1);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -294,11 +324,11 @@ export default function Home() {
             <div className="flex items-center gap-3">
               <span className="text-3xl">🌱</span>
               <span className="text-xl font-bold text-text">Opolo</span>
-              {totalPages > 1 && (
-                <span className="text-sm font-semibold text-text-light bg-peach/40 px-3 py-1 rounded-full">
-                  Page {currentPageIndex + 1} of {totalPages}
-                </span>
-              )}
+              <span className="text-sm font-semibold text-text-light bg-peach/40 px-3 py-1 rounded-full">
+                {totalPages > 1
+                  ? `Page ${currentPageIndex + 1} · Problem ${currentProblem}`
+                  : `Problem ${currentProblem}`}
+              </span>
             </div>
             <button
               onClick={handleNewAssignment}
@@ -330,28 +360,27 @@ export default function Home() {
             <FollowUpInput onSend={handleFollowUp} />
           )}
 
-          {/* Next page button — only when there are more pages */}
-          {state === "breakdown" && hasMorePages && (
-            <section className="bg-sky-light rounded-2xl p-6 border border-sky/30 shadow-sm text-center space-y-3">
-              <p className="text-lg text-text">
-                Ready for the next page? No rush — only when you are.
-              </p>
+          {/* Next problem / next page buttons */}
+          {state === "breakdown" && (
+            <div className="flex flex-col gap-3">
+              {/* Next problem on same page */}
               <button
-                onClick={handleNextPage}
-                className="px-8 py-3 bg-sky text-white font-bold rounded-xl hover:bg-sky/80 transition-all text-lg"
+                onClick={handleNextProblem}
+                className="w-full px-6 py-4 bg-mint text-white font-bold rounded-2xl hover:bg-mint/80 transition-all text-base"
               >
-                Show me page {currentPageIndex + 2} →
+                Next problem →
               </button>
-            </section>
-          )}
 
-          {/* All done indicator */}
-          {state === "breakdown" && totalPages > 1 && !hasMorePages && (
-            <section className="bg-mint-light rounded-2xl p-5 border border-mint/30 shadow-sm text-center">
-              <p className="text-lg text-text font-semibold">
-                That is all the pages. Nice work getting through them all! ✨
-              </p>
-            </section>
+              {/* Next page — only when there are more pages */}
+              {hasMorePages && (
+                <button
+                  onClick={handleNextPage}
+                  className="w-full px-6 py-3 bg-sky text-white font-semibold rounded-2xl hover:bg-sky/80 transition-all text-base"
+                >
+                  Next page →
+                </button>
+              )}
+            </div>
           )}
         </div>
       </main>

@@ -1,9 +1,10 @@
 interface FollowUpData {
   validation: string;
   workedExample?: string;
+  coachingQuestion?: string;
   guidingQuestion?: string;
   newExplanation?: string;
-  tryThis: string;
+  tryThis?: string;
   checkIn: string;
 }
 
@@ -29,14 +30,14 @@ export function FollowUpView({ data }: { data: FollowUpData }) {
         </section>
       )}
 
-      {/* Guiding question */}
-      {data.guidingQuestion && (
+      {/* Coaching/guiding question */}
+      {(data.coachingQuestion || data.guidingQuestion) && (
         <section className="bg-sky-light rounded-2xl p-5 border-2 border-sky/40 shadow-sm">
           <h2 className="text-xs font-bold text-sky uppercase tracking-wide mb-2">
             🤔 Think about this
           </h2>
           <p className="text-lg font-semibold text-text">
-            {data.guidingQuestion}
+            {data.coachingQuestion || data.guidingQuestion}
           </p>
         </section>
       )}
@@ -51,12 +52,14 @@ export function FollowUpView({ data }: { data: FollowUpData }) {
       )}
 
       {/* Try this */}
-      <section className="bg-soft-orange/15 rounded-2xl p-5 border-2 border-soft-orange/40 shadow-sm">
-        <h2 className="text-xs font-bold text-soft-orange uppercase tracking-wide mb-2">
-          ▶️ Try this
-        </h2>
-        <p className="text-lg font-semibold text-text">{data.tryThis}</p>
-      </section>
+      {data.tryThis && (
+        <section className="bg-soft-orange/15 rounded-2xl p-5 border-2 border-soft-orange/40 shadow-sm">
+          <h2 className="text-xs font-bold text-soft-orange uppercase tracking-wide mb-2">
+            ▶️ Try this
+          </h2>
+          <p className="text-lg font-semibold text-text">{data.tryThis}</p>
+        </section>
+      )}
 
       {/* Check-in */}
       <section className="bg-warm-white rounded-2xl p-5 border border-border shadow-sm">

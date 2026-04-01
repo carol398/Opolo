@@ -4,7 +4,7 @@ import { SYSTEM_PROMPT } from "@/lib/system-prompt";
 
 export async function POST(request: NextRequest) {
   try {
-    const { image, mediaType } = await request.json();
+    const { image, mediaType, problemNumber } = await request.json();
 
     if (!image) {
       return NextResponse.json(
@@ -41,7 +41,9 @@ export async function POST(request: NextRequest) {
             },
             {
               type: "text",
-              text: "This is a photo of my homework. Please help me understand it. Remember: never show me the original question text. Give me the visual breakdown first.",
+              text: problemNumber && problemNumber > 1
+                ? `This is a photo of my homework. Please break down ONLY problem #${problemNumber} on this page. Skip all earlier problems. Remember: never show me the original question text.`
+                : "This is a photo of my homework. Please help me understand it. Remember: never show me the original question text.",
             },
           ],
         },
