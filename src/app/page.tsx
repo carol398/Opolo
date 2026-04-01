@@ -10,6 +10,7 @@ interface BreakdownData {
   whatThisIsAsking: string;
   visualBreakdown: string;
   explanation: string;
+  guidingQuestion: string;
   answerChoices: { letter: string; text: string }[];
   steps: string[];
   wordsToKnow: { word: string; meaning: string }[];
@@ -19,6 +20,7 @@ interface BreakdownData {
 
 interface FollowUpData {
   validation: string;
+  guidingQuestion?: string;
   newExplanation: string;
   tryThis: string;
   checkIn: string;

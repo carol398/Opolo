@@ -3,6 +3,7 @@ interface BreakdownData {
   whatThisIsAsking: string;
   visualBreakdown: string;
   explanation: string;
+  guidingQuestion: string;
   answerChoices: { letter: string; text: string }[];
   steps: string[];
   wordsToKnow: { word: string; meaning: string }[];
@@ -44,6 +45,18 @@ export function BreakdownView({ data }: { data: BreakdownData }) {
           </h2>
           <p className="text-base text-text leading-relaxed whitespace-pre-line">
             {data.explanation}
+          </p>
+        </section>
+      )}
+
+      {/* Guiding question — scaffolded thinking */}
+      {data.guidingQuestion && (
+        <section className="bg-sky-light rounded-2xl p-6 border-2 border-sky/40 shadow-sm">
+          <h2 className="text-sm font-bold text-sky uppercase tracking-wide mb-3">
+            🤔 Think about this
+          </h2>
+          <p className="text-xl font-semibold text-text leading-relaxed">
+            {data.guidingQuestion}
           </p>
         </section>
       )}
