@@ -36,13 +36,13 @@ export function BreakdownView({ data }: { data: BreakdownData }) {
         <StoryFlow text={data.visualBreakdown} />
       </section>
 
-      {/* Explanation — 5th grade level */}
+      {/* Explanation — short, 5th grade level */}
       {data.explanation && (
-        <section className="bg-warm-white rounded-2xl p-6 border border-border shadow-sm">
-          <h2 className="text-sm font-bold text-text-light uppercase tracking-wide mb-4">
+        <section className="bg-peach/20 rounded-2xl p-5 border border-soft-orange/20 shadow-sm">
+          <h2 className="text-sm font-bold text-soft-orange uppercase tracking-wide mb-2">
             💡 Why this works
           </h2>
-          <p className="text-lg text-text leading-loose whitespace-pre-line">
+          <p className="text-base text-text leading-relaxed whitespace-pre-line">
             {data.explanation}
           </p>
         </section>
@@ -50,20 +50,20 @@ export function BreakdownView({ data }: { data: BreakdownData }) {
 
       {/* Answer choices — only if the homework has them */}
       {data.answerChoices && data.answerChoices.length > 0 && (
-        <section className="bg-sky-light rounded-2xl p-6 border border-sky/30 shadow-sm">
-          <h2 className="text-sm font-bold text-sky uppercase tracking-wide mb-4">
+        <section className="bg-warm-white rounded-2xl p-6 border border-border shadow-sm">
+          <h2 className="text-sm font-bold text-text-light uppercase tracking-wide mb-4">
             🔤 Your answer choices
           </h2>
           <div className="space-y-3">
             {data.answerChoices.map((choice, i) => (
               <div
                 key={i}
-                className="flex items-start gap-4 bg-white/60 rounded-xl p-4"
+                className="flex items-center gap-4 bg-cream rounded-xl p-4 border border-border"
               >
-                <span className="flex-shrink-0 w-9 h-9 rounded-full bg-sky flex items-center justify-center text-white font-bold text-lg">
-                  {choice.letter}
+                <span className="flex-shrink-0 w-10 h-10 rounded-full bg-soft-orange flex items-center justify-center text-white font-bold text-lg">
+                  {(choice.letter || String(i + 1)).charAt(0)}
                 </span>
-                <span className="text-lg text-text pt-1 leading-relaxed">
+                <span className="text-lg text-text leading-snug">
                   {choice.text}
                 </span>
               </div>
