@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Opolo — Homework Helper",
-  description: "A calm, visual homework helper built for you.",
+  title: "Homework Translator",
+  description: "A calm, visual homework translator built for you.",
 };
 
 export default function RootLayout({

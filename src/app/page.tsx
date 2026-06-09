@@ -287,10 +287,10 @@ export default function Home() {
           <div className="space-y-3">
             <div className="text-6xl mb-2">🌱</div>
             <h1 className="text-4xl font-extrabold text-text tracking-tight">
-              Opolo
+              Homework Translator
             </h1>
             <p className="text-xl text-text-light font-semibold">
-              Your homework helper
+              Your homework, translated
             </p>
           </div>
 
@@ -363,7 +363,7 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-2xl">🌱</span>
-              <span className="text-lg font-bold text-text">Opolo</span>
+              <span className="text-lg font-bold text-text">Homework Translator</span>
             </div>
             <button
               onClick={handleNewAssignment}
